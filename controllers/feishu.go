@@ -119,7 +119,7 @@ func PostToFeiShuv2(title, text, Fsurl, logsign string) string {
 	}
 	u := FSMessagev2{
 		MsgType: "interactive",
-		Email:   "244217140@qq.com",
+		Email:   "cloud@deeproute.ai",
 		Card: Cards{
 			Config: Conf{
 				WideScreenMode: true,
@@ -147,7 +147,7 @@ func PostToFeiShuv2(title, text, Fsurl, logsign string) string {
 					Tag: "note",
 					Elements: []Element{
 						{
-							Content: "PrometheusAlert    ",
+							Content: "DeepRoute.ai    ",
 							Tag:     "lark_md",
 						},
 					},

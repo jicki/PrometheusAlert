@@ -2,7 +2,10 @@ FROM golang:1.14-alpine3.12 as builder
 
 WORKDIR $GOPATH/src/github.com/feiyu563/PrometheusAlert
 
-RUN apk update && apk upgrade && apk add --no-cache gcc g++ sqlite-libs
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+    && apk update \
+    && apk upgrade \
+    && apk add --no-cache gcc g++ sqlite-libs
 
 ENV GO111MODULE on
 
@@ -18,7 +21,10 @@ FROM alpine:3.12
 
 LABEL maintainer="jikun.zhang"
 
-RUN apk update && apk upgrade && apk add --no-cache sqlite-libs
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+    && apk update \
+    && apk upgrade \
+    && apk add --no-cache sqlite-libs
 
 WORKDIR /app
 
