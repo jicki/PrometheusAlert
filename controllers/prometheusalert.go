@@ -464,7 +464,17 @@ func SendMessagePrometheusAlert(message string, pmsg *PrometheusAlertMsg, logsig
 	//钉钉渠道
 	case "dd":
 		Ddurl := strings.Split(pmsg.Ddurl, ",")
-		if pmsg.RoundRobin == "true" {
+		if redisOpen == "1" && pmsg.RoundRobin != "true" {
+			for _, url := range Ddurl {
+				// 每分钟的峰值 Send 不超过 100 条
+				lock, _ := NewRedisLock(ctx, url, 60*time.Second, 100*time.Millisecond, 600)
+				ReturnMsg += PostToDingDing(Title, message, url, pmsg.AtSomeOne, logsign)
+				time.Sleep(300 * time.Microsecond)
+				if lock != nil {
+					lock.Release(ctx)
+				}
+			}
+		} else if pmsg.RoundRobin == "true" {
 			ReturnMsg += PostToDingDing(Title, message, DoBalance(Ddurl), pmsg.AtSomeOne, logsign)
 		} else {
 			for _, url := range Ddurl {
