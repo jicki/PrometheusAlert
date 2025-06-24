@@ -19,7 +19,8 @@ func (c *MainController) AlertTest() {
 		c.Data["json"] = ret
 	case "fs":
 		fstext := "[PrometheusAlert](https://github.com/feiyu563/PrometheusAlert)\n\n" + "测试告警\n\n" + "告警级别：测试\n\nPrometheusAlert\n\n" + "![PrometheusAlert](" + beego.AppConfig.String("logourl") + ")"
-		ret := PostToFS("PrometheusAlert", fstext, beego.AppConfig.String("fsurl"), "xxxxxxxxxxx@qq.com", logsign)
+		//飞书API要求@ 邮箱地址必须有填充
+		ret := PostToFS("PrometheusAlert", fstext, beego.AppConfig.String("fsurl"), "244217140@qq.com", logsign)
 		c.Data["json"] = ret
 	case "txdx":
 		MobileMessage := "PrometheusAlertCenter测试告警"
@@ -49,7 +50,7 @@ func (c *MainController) AlertTest() {
             <h3>PrometheusAlert邮件告警测试</h3>
 			欢迎使用<a href ="https://feiyu563.gitee.io">PrometheusAlert</a><br>
 			`
-		ret := SendEmail(TestEmailMessage, beego.AppConfig.String("Default_emails"), logsign)
+		ret := SendEmail(TestEmailMessage, beego.AppConfig.String("Default_emails"), beego.AppConfig.String("Email_title"), logsign)
 		c.Data["json"] = ret
 	case "7moordx":
 		MobileMessage := "PrometheusAlertCenter测试告警"
@@ -93,7 +94,7 @@ func (c *MainController) AlertTest() {
 	c.ServeJSON()
 }
 
-//markdown test
+// markdown test
 func (c *MainController) MarkdownTest() {
 	if !CheckAccount(c.Ctx) {
 		c.Redirect("/login", 302)
@@ -123,7 +124,7 @@ func (c *MainController) MarkdownTest() {
 
 }
 
-//test page
+// test page
 func (c *MainController) Test() {
 	if !CheckAccount(c.Ctx) {
 		c.Redirect("/login", 302)

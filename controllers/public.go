@@ -2,20 +2,22 @@ package controllers
 
 import (
 	"bufio"
-	"github.com/astaxie/beego"
-	"github.com/astaxie/beego/logs"
+	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/logs"
 )
 
 func LogsSign() string {
 	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }
 
-//转换时间戳到时间字符串
+// 转换时间戳到时间字符串
 func GetTime(timeStr interface{}, timeFormat ...string) string {
 	var R_Time string
 	//判断传入的timeStr是否为float64类型，如gerrit消息中时间戳就是float64
@@ -39,7 +41,53 @@ func GetTime(timeStr interface{}, timeFormat ...string) string {
 	return R_Time
 }
 
-//转换UTC时区到CST
+// 转换时间为持续时长
+func GetTimeDuration(startTime string,endTime string) string {
+	var tm = "N/A"
+	if startTime != "" && endTime != "" {
+		starT1 := startTime[0:10]
+		starT2 := startTime[11:19]
+		starT3 := starT1 + " " + starT2
+		startm2, err := time.Parse("2006-01-02 15:04:05", starT3)
+		if err != nil {
+			return tm // 如果解析失败，则返回N/A
+		}
+
+		endT1 := endTime[0:10]
+		endT2 := endTime[11:19]
+		endT3 := endT1 + " " + endT2
+		endm2, err := time.Parse("2006-01-02 15:04:05", endT3)
+		if err != nil {
+			return tm // 如果解析失败，则返回N/A
+		}
+
+		sub := endm2.UTC().Sub(startm2.UTC())
+
+		t := int64(sub.Seconds())
+		if t >= 86400 {
+			days := t / 86400
+			hours := (t % 86400) / 3600
+			tm = fmt.Sprintf("%dd%dh", days, hours)
+		} else {
+			hours := t / 3600
+			minutes := (t % 3600) / 60
+			if hours > 0 {
+				tm = fmt.Sprintf("%dh%dm", hours, minutes)
+			} else {
+				// 如果小时为0，则只显示分钟和秒
+				seconds := t % 60
+				tm = fmt.Sprintf("%dm%ds", minutes, seconds)
+				if minutes == 0 {
+					// 如果分钟也为0，则只显示秒
+					tm = fmt.Sprintf("%ds", seconds)
+				}
+			}
+		}
+	}
+	return tm
+}
+
+// 转换UTC时区到CST
 func GetCSTtime(date string) string {
 	var tm string
 	tm = time.Now().Format("2006-01-02 15:04:05")
@@ -67,7 +115,7 @@ func TimeFormat(timestr, format string) string {
 	}
 }
 
-//获取用户号码
+// 获取用户号码
 func GetUserPhone(neednum int) string {
 	//判断是否存在user.csv文件
 	Num := beego.AppConfig.String("defaultphone")

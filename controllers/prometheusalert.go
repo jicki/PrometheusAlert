@@ -5,14 +5,15 @@ import (
 	"PrometheusAlert/models/elastic"
 	"bytes"
 	"encoding/json"
-	"github.com/astaxie/beego"
-	"github.com/astaxie/beego/logs"
+	"fmt"
 	tmplhtml "html/template"
 	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/logs"
 )
 
 type PrometheusAlertController struct {
@@ -67,6 +68,7 @@ type PrometheusAlertMsg struct {
 	WebHookUrl         string
 	ToUser             string
 	Email              string
+	EmailTitle         string
 	ToParty            string
 	ToTag              string
 	GroupId            string
@@ -110,50 +112,44 @@ func (c *PrometheusAlertController) PrometheusAlert() {
 		json.Unmarshal(c.Ctx.Input.RequestBody, &p_alertmanager_json)
 	}
 
+	// alertgroup
+	alertgroup := c.Input().Get("alertgroup")
+	openAg := beego.AppConfig.String("open-alertgroup")
+	var agMap map[string]string
+	if openAg == "1" && len(alertgroup) != 0 {
+		agMap = Alertgroup(alertgroup)
+	}
+
 	pMsg.Type = c.Input().Get("type")
 	pMsg.Tpl = c.Input().Get("tpl")
-	pMsg.Ddurl = c.Input().Get("ddurl")
-	if pMsg.Ddurl == "" {
-		pMsg.Ddurl = beego.AppConfig.String("ddurl")
-	}
-	pMsg.Wxurl = c.Input().Get("wxurl")
-	if pMsg.Wxurl == "" {
-		pMsg.Wxurl = beego.AppConfig.String("wxurl")
-	}
-	pMsg.Fsurl = c.Input().Get("fsurl")
-	if pMsg.Fsurl == "" {
-		pMsg.Fsurl = beego.AppConfig.String("fsurl")
-	}
-	pMsg.WebHookUrl = c.Input().Get("webhookurl")
-	pMsg.WebhookContentType = c.Input().Get("webhookContentType")
-	pMsg.Phone = c.Input().Get("phone")
+
+	// 告警组适合处理以逗号分隔的多个值
+	pMsg.Ddurl = checkURL(agMap["ddurl"], c.Input().Get("ddurl"), beego.AppConfig.String("ddurl"))
+	pMsg.Wxurl = checkURL(agMap["wxurl"], c.Input().Get("wxurl"), beego.AppConfig.String("wxurl"))
+	pMsg.Fsurl = checkURL(agMap["fsurl"], c.Input().Get("fsurl"), beego.AppConfig.String("fsurl"))
+	pMsg.Email = checkURL(agMap["email"], c.Input().Get("email"), beego.AppConfig.String("email"))
+	pMsg.GroupId = checkURL(agMap["groupid"], c.Input().Get("groupid"), beego.AppConfig.String("BDRL_ID"))
+
+	pMsg.Phone = checkURL(agMap["phone"], c.Input().Get("phone"))
 	if pMsg.Phone == "" && (pMsg.Type == "txdx" || pMsg.Type == "hwdx" || pMsg.Type == "bddx" || pMsg.Type == "alydx" || pMsg.Type == "txdh" || pMsg.Type == "alydh" || pMsg.Type == "rlydh" || pMsg.Type == "7moordx" || pMsg.Type == "7moordh") {
 		pMsg.Phone = GetUserPhone(1)
 	}
-	pMsg.Email = c.Input().Get("email")
-	if pMsg.Email == "" {
-		pMsg.Email = beego.AppConfig.String("Default_emails")
-	}
-	pMsg.ToUser = c.Input().Get("wxuser")
-	if pMsg.ToUser == "" {
-		pMsg.ToUser = beego.AppConfig.String("WorkWechat_ToUser")
-	}
-	pMsg.ToParty = c.Input().Get("wxparty")
-	if pMsg.ToParty == "" {
-		pMsg.ToParty = beego.AppConfig.String("WorkWechat_ToParty")
-	}
-	pMsg.ToTag = c.Input().Get("wxtag")
-	if pMsg.ToTag == "" {
-		pMsg.ToTag = beego.AppConfig.String("WorkWechat_ToTag")
-	}
-	pMsg.GroupId = c.Input().Get("groupid")
-	if pMsg.GroupId == "" {
-		pMsg.GroupId = beego.AppConfig.String("BDRL_ID")
-	}
+
+	pMsg.WebHookUrl = checkURL(agMap["webhookurl"], c.Input().Get("webhookurl"))
+	// webhookContenType, rr, split, workwechat 是单个值，因此不写入告警组。
+	pMsg.WebhookContentType = c.Input().Get("webhookContentType")
+
+	pMsg.ToUser = checkURL(c.Input().Get("wxuser"), beego.AppConfig.String("WorkWechat_ToUser"))
+	pMsg.ToParty = checkURL(c.Input().Get("wxparty"), beego.AppConfig.String("WorkWechat_ToUser"))
+	pMsg.ToTag = checkURL(c.Input().Get("wxtag"), beego.AppConfig.String("WorkWechat_ToUser"))
+	pMsg.EmailTitle = checkURL(c.Input().Get("emailtitle"), beego.AppConfig.String("Email_title"))
+
+	// dd, wx, fsv2 的 at 格式不一样，放在告警组里不好处理和组装。
 	pMsg.AtSomeOne = c.Input().Get("at")
 	pMsg.RoundRobin = c.Input().Get("rr")
 	//该配置仅适用于alertmanager的消息,用于判断是否需要拆分alertmanager告警消息
 	pMsg.Split = c.Input().Get("split")
+
 	//模版加载进内存处理,防止告警过多频繁查库
 	var PrometheusAlertTpl *models.PrometheusAlertDB
 	if GlobalPrometheusAlertTpl == nil {
@@ -171,8 +167,11 @@ func (c *PrometheusAlertController) PrometheusAlert() {
 		if pMsg.Split != "false" && PrometheusAlertTpl.Tpluse == "Prometheus" {
 			//判断告警路由AlertRouter列表是否为空
 			if GlobalAlertRouter == nil {
+				query := models.AlertRouterQuery{}
+				query.Name = c.GetString("name", "")
+				query.Webhook = c.GetString("webhook", "")
 				//刷新告警路由AlertRouter
-				GlobalAlertRouter, _ = models.GetAllAlertRouter()
+				GlobalAlertRouter, _ = models.GetAllAlertRouter(query)
 			}
 			Alerts_Value, _ := p_alertmanager_json["alerts"].([]interface{})
 			//拆分告警消息
@@ -222,7 +221,7 @@ func (c *PrometheusAlertController) PrometheusAlert() {
 	c.ServeJSON()
 }
 
-//路由处理
+// 路由处理
 func AlertRouterSet(xalert map[string]interface{}, PMsg PrometheusAlertMsg, Tpl string) []PrometheusAlertMsg {
 	return_Msgs := []PrometheusAlertMsg{}
 	//原有的参数不变
@@ -270,18 +269,30 @@ func AlertRouterSet(xalert map[string]interface{}, PMsg PrometheusAlertMsg, Tpl 
 		if rules_num == rules_num_match {
 			PMsg.Type = router_value.Tpl.Tpltype
 			PMsg.Tpl = router_value.Tpl.Tpl
+			atSomeOne := router_value.AtSomeOne
+			if router_value.AtSomeOneRR {
+				openIds := strings.Split(router_value.AtSomeOne, ",")
+				if len(openIds) > 1 {
+					// 用自1970年1月1日以来的天数取余计算
+					duration := time.Since(time.Unix(0, 0))
+					days := duration.Hours() / 24
+					i := int(days) % len(openIds)
+					atSomeOne = openIds[i]
+				}
+			}
+
 			switch router_value.Tpl.Tpltype {
 			case "wx":
 				PMsg.Wxurl = router_value.UrlOrPhone
-				PMsg.AtSomeOne = router_value.AtSomeOne
+				PMsg.AtSomeOne = atSomeOne
 			//钉钉渠道
 			case "dd":
 				PMsg.Ddurl = router_value.UrlOrPhone
-				PMsg.AtSomeOne = router_value.AtSomeOne
+				PMsg.AtSomeOne = atSomeOne
 			//飞书渠道
 			case "fs":
 				PMsg.Fsurl = router_value.UrlOrPhone
-				PMsg.AtSomeOne = router_value.AtSomeOne
+				PMsg.AtSomeOne = atSomeOne
 			//Webhook渠道
 			case "webhook":
 				PMsg.WebHookUrl = router_value.UrlOrPhone
@@ -308,7 +319,7 @@ func AlertRouterSet(xalert map[string]interface{}, PMsg PrometheusAlertMsg, Tpl 
 	return return_Msgs
 }
 
-//处理告警记录
+// 处理告警记录
 func SetRecord(AlertValue interface{}) {
 	var Alertname, Status, Level, Labels, Instance, Summary, Description, StartAt, EndAt string
 	xalert := AlertValue.(map[string]interface{})
@@ -365,7 +376,7 @@ func SetRecord(AlertValue interface{}) {
 	if beego.AppConfig.DefaultString("alert_to_es", "0") == "1" {
 		dt := time.Now()
 		dty, dtm := dt.Year(), int(dt.Month())
-		esIndex := "prometheusalert-" + strconv.Itoa(dty) + strconv.Itoa(dtm)
+		esIndex := fmt.Sprintf("prometheusalert-%d%02d", dty, dtm)
 		alert := &elastic.AlertES{
 			Alertname:   Alertname,
 			Status:      Status,
@@ -378,19 +389,20 @@ func SetRecord(AlertValue interface{}) {
 			EndsAt:      EndAt,
 			Created:     dt,
 		}
-		elastic.Insert(esIndex, alert)
+		go elastic.Insert(esIndex, *alert)
 	}
 }
 
-//消息模版化
+// 消息模版化
 func TransformAlertMessage(p_json interface{}, tpltext string) (error error, msg string) {
 	funcMap := template.FuncMap{
-		"GetCSTtime": GetCSTtime,
-		"TimeFormat": TimeFormat,
-		"GetTime":    GetTime,
-		"toUpper":    strings.ToUpper,
-		"toLower":    strings.ToLower,
-		"title":      strings.Title,
+		"GetTimeDuration": GetTimeDuration,
+		"GetCSTtime":      GetCSTtime,
+		"TimeFormat":      TimeFormat,
+		"GetTime":         GetTime,
+		"toUpper":         strings.ToUpper,
+		"toLower":         strings.ToLower,
+		"title":           strings.Title,
 		// join is equal to strings.Join but inverts the argument order
 		// for easier pipelining in templates.
 		"join": func(sep string, s []string) string {
@@ -430,7 +442,7 @@ func TransformAlertMessage(p_json interface{}, tpltext string) (error error, msg
 	return nil, buf.String()
 }
 
-//发送消息
+// 发送消息
 func SendMessagePrometheusAlert(message string, pmsg *PrometheusAlertMsg, logsign string) string {
 	Title := beego.AppConfig.String("title")
 	var ReturnMsg string
@@ -510,7 +522,7 @@ func SendMessagePrometheusAlert(message string, pmsg *PrometheusAlertMsg, logsig
 		ReturnMsg += Post7MOORphonecall(message, pmsg.Phone, logsign)
 	//邮件
 	case "email":
-		ReturnMsg += SendEmail(message, pmsg.Email, logsign)
+		ReturnMsg += SendEmail(message, pmsg.Email, pmsg.EmailTitle, logsign)
 	// Telegram
 	case "tg":
 		ReturnMsg += SendTG(message, logsign)
@@ -529,6 +541,9 @@ func SendMessagePrometheusAlert(message string, pmsg *PrometheusAlertMsg, logsig
 	//飞书APP渠道
 	case "fsapp":
 		ReturnMsg += PostToFeiShuApp(Title, message, pmsg.AtSomeOne, logsign)
+	//kafka渠道
+	case "kafka":
+		ReturnMsg += SendKafka(message, logsign)
 	//异常参数
 	default:
 		ReturnMsg = "参数错误"

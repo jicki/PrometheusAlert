@@ -1,7 +1,5 @@
 # PrometheusAlert全家桶
 
----------------------------------------
-
 ![author](https://img.shields.io/badge/author-jikun.zhang-blueviolet.svg)
 ![license](https://img.shields.io/github/license/feiyu563/PrometheusAlert.svg)
 ![last commit](https://img.shields.io/github/last-commit/feiyu563/PrometheusAlert.svg)
@@ -16,75 +14,122 @@
 [![Travis](https://img.shields.io/badge/language-JavaScript-yellow.svg)]()
 [![Travis](https://img.shields.io/badge/language-Shell-blue.svg)]()
 
----------------------------------------
+<br/>
 
-PrometheusAlert是开源的运维告警中心消息转发系统，支持主流的监控系统Prometheus、Zabbix，日志系统Graylog2，Graylog3、数据可视化系统Grafana、SonarQube。阿里云-云监控，以及所有支持WebHook接口的系统发出的预警消息，支持将收到的这些消息发送到钉钉，微信，email，飞书，腾讯短信，腾讯电话，阿里云短信，阿里云电话，华为短信，百度云短信，容联云电话，七陌短信，七陌语音，TeleGram，百度Hi(如流)等。
+## 项目介绍
+
+PrometheusAlert是开源的运维告警中心消息转发系统，支持主流的监控系统Prometheus、Zabbix，日志系统Graylog2，Graylog3、数据可视化系统Grafana、SonarQube。阿里云-云监控，以及所有支持WebHook接口的系统发出的预警消息，支持将收到的这些消息发送到钉钉，微信，email，飞书，腾讯短信，腾讯电话，阿里云短信，阿里云电话，华为短信，百度云短信，容联云电话，七陌短信，七陌语音，TeleGram，百度Hi(如流)，Kafka等。
 
 ![it](doc/images/it.png)
 
-----------------------------------------
+--------------------------------------
 
 * 如果这个项目能为您带来帮助，我将感到非常荣幸！同时非常欢迎您加入PrometheusAlert全家桶的微信群一起探讨关于PrometheusAlert新一期的开发计划。
-
 * PrometheusAlert的成长离不开所有爱好运维和开发的朋友们的支持！如果您也对这个项目感兴趣，请点击一下 Star 以示鼓励，谢谢
 
-----------------------------------------
+<br/>
 
-## 构建
+## 项目架构
 
-应用信息和构建相关的命令都写入了Makefile，请确保安装`make`, `git`, `go`命令。如有特定需要，请自行修改Makefile。
+PrometheusAlert 后端使用了 [beego](https://github.com/beego/beego) 框架，前端使用了 [AdminLTE](https://github.com/ColorlibHQ/AdminLTE) （基于 Bootstrap 和 Jquery）模板。
 
-```bash
+项目文件：
+
+```
+├── cmd: 脚本
+├── conf： 配置
+├── controllers：控制器
+├── db：默认的 sqlite 数据
+├── doc：文档
+├── docker-entrypoint.sh：容器运行入口文件
+├── Dockerfile
+├── example：示例文件
+├── go.mod
+├── go.sum
+├── LICENSE
+├── main.go
+├── Makefile
+├── models：模型
+├── PrometheusAlert：二进制文件
+├── PrometheusAlertVoicePlugin
+├── README.MD
+├── routers：路由
+├── static：静态资源
+├── swagger
+├── tests：测试
+├── views：前端模板
+└── zabbixclient
+```
+
+<br/>
+
+## 快速开始
+
+你可以通过以下方式快速开始：
+
+- 通过源代码构建
+- 下载发行版本
+- 通过 Docker 运行
+
+<br/>
+
+### 构建
+
+应用信息和构建相关的命令都写入了 Makefile，请确保安装`make`, `git`, `go`命令。如有特定需要，请自行修改 Makefile。
+
+默认构建生成的文件是 `./PrometheusAlert`。
+
+```sh
 # 默认
 make
 
-# 只运行构建
+# 构建
 make build
 
-# 运行 go fmt
-make format
+# 清理构建
+make clean
 
-# 运行 go vet
-make vet
+# 运行 fmt/vet/test
+make format/vet/test
 
-# 运行 go test
-make test
+# 构建镜像，推送镜像，运行镜像
+make docker/docker-push/docker-test
 
-# 构建镜像
-make docker
-
-# 推送镜像
-make docker-push
-
-# 运行镜像测试
-make docker-test
-
-
-# 运行
-copy conf/app-example.conf conf/app.conf
+# 本地测试运行
+make clean && make build
+cp conf/app-example.conf conf/app.conf
 ./PrometheusAlert
+
 # 测试应用健康
 curl http://localhost:8080/health
 ```
 
--------------------------------------
+<br/>
 
-## 启动
+### 下载发行版本
 
-```
+通过下载编译好的发行版本，解压后运行。
+
+```sh
 #打开PrometheusAlert releases页面，根据需要选择需要的版本下载到本地解压并进入解压后的目录
-如linux版本(https://github.com/feiyu563/PrometheusAlert/releases/download/v4.7/linux.zip)
+如linux版本(https://github.com/feiyu563/PrometheusAlert/releases/download/v4.9.1/linux.zip)
 
-# wget https://github.com/feiyu563/PrometheusAlert/releases/download/v4.7/linux.zip && unzip linux.zip &&cd linux/
+# wget https://github.com/feiyu563/PrometheusAlert/releases/download/v4.9.1/linux.zip && unzip linux.zip &&cd linux/
 
 #运行PrometheusAlert
 # ./PrometheusAlert (#后台运行请执行 nohup ./PrometheusAlert &)
 
 #启动后可使用浏览器打开以下地址查看：http://127.0.0.1:8080
 #默认登录帐号和密码在app.conf中有配置
+
+# 使用 supervisor 来守护启动。
+# 配置参考 example/supervisor/prometheusalert.ini
+# 如果需要将日志输出到控制台，请修改 app.conf 中 logtype=console
 ```
 
-## Docker 启动
+<br/>
+
+### 通过 Docker 启动
 
 配置文件 app.conf 的内容可以使用环境变量的方式初始化。
 
@@ -94,7 +139,7 @@ curl http://localhost:8080/health
 
 示例
 
-```
+```sh
 docker run -d \
 -p 8080:8080 \
 -e PA_LOGIN_USER=prometheusalert \
@@ -103,21 +148,32 @@ docker run -d \
 -e PA_OPEN_FEISHU=1 \
 -e PA_OPEN_DINGDING=1 \
 -e PA_OPEN_WEIXIN=1 \
-feiyu563/prometheus-alert:latest
+feiyu563/prometheus-alert:v4.9.1
 ```
 
-所有的配置文件内容请[点击此处](https://github.com/feiyu563/PrometheusAlert/blob/master/conf/app-example.conf)查看
+<br/>
 
----------------------------------------
+### 配置文件
+
+配置文件位于 `conf/app.conf`，默认采用 INI 格式解析。
+
+所有的配置文件内容请[点击此处](https://github.com/feiyu563/PrometheusAlert/blob/master/conf/app-example.conf)查看。
+
+<br/>
+
+### 运行效果图
+
+程序运行后，访问默认地址 `http://localhost:8080` 的效果如下。
 
 ![dashboard](doc/images/dashboard.png)
+
 ![dashboard-test](doc/images/template.png)
 
---------------------------------------
+<br/>
 
-## PrometheusAlert具备如下特性
+## 特性
 
---------------------------------------
+PrometheusAlert 具备如下特性：
 
  - 支持任意包含WebHook接口系统的消息作为消息来源，常见的如Prometheus，Zabbix，Graylog2，Graylog3，Grafana，SonarQube和其他WebHook接口的系统。
  - 支持多种类型的发送目标，支持钉钉，企业微信，email，飞书，腾讯短信，腾讯语音，阿里云短信，阿里云语音，华为短信，百度云短信，容联云电话，七陌短信，七陌语音，TeleGram，百度Hi(如流)。
@@ -131,17 +187,18 @@ feiyu563/prometheus-alert:latest
  - 增加支持钉钉，企业微信的@某人功能
  - 增加支持阿里云-云监控告警
  - 增加随机轮询，目前仅针对ddurl，fsurl，wxurl有效，默认情况下如果上述Url配置的是多个地址，则多个地址全部发送，如开启该选项，则从多个地址中随机取一个地址发送，主要是为了避免消息发送频率过高导致触发部分机器人拦截消息
- - 增加支持将Prometheus告警记录写入到Elasticsearch7.x，可通过Kibana进行界面查看告警记录和配置表格导出。
+ - 增加支持将 Prometheus 告警记录写入到 ES7.x 和 ES 8.x，可通过 Kibana 进行界面查看告警记录和配置表格导出。
  - 增加支持将Gitlab webhook event推送到企微和钉钉。
  - 增加告警路由和告警记录功能，可通过页面查看告警历史和操作告警消息路由。
  - 增加告警语音播报插件。
  - 增加支持飞书机器人应用。
+ - 增加告警组，可以将通知媒介写到告警组里面，便于配置和修改。
+ - 增加热加载配置接口
+ - 增加钉钉加签
 
--------------------------------------
+<br/>
 
 ## 致谢以下伙伴对PrometheusAlert的贡献
-
---------------------------------------
 
  - [@cyancow](https://github.com/cyancow)
  - [@birkh8792](https://github.com/birkh8792)
@@ -153,7 +210,7 @@ feiyu563/prometheus-alert:latest
  - [@guvmao](https://github.com/guvmao)
  - [@lusson-luo](https://github.com/lusson-luo)
 
---------------------------------------
+<br/>
 
 ## PrometheusAlert全家桶新手入门
 
@@ -197,6 +254,9 @@ feiyu563/prometheus-alert:latest
   * [告警记录-ES接入配置](doc/readme/conf-es.md)
   * [语音播报](doc/readme/conf-voice.md)
   * [飞书机器人应用](doc/readme/conf-feishuapp.md)
+  * [告警消息转发至Kafka配置](doc/readme/conf-kafka.md)
+  * [告警组配置](doc/readme/alertgroup.md)
+  * [热加载配置](doc/readme/hotreload.md)
 
 * [【告警系统接入PrometheusAlert配置】](doc/readme/system.md)
   * [Prometheus 接入配置](doc/readme/system-prometheus.md)

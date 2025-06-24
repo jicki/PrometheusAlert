@@ -4,6 +4,7 @@ import (
 	"PrometheusAlert/models"
 	"PrometheusAlert/models/elastic"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ type PrometheusController struct {
 	beego.Controller
 }
 
+// Labels are prometheus labels.
 type Labels struct {
 	Alertname    string `json:"alertname"`
 	Instance     string `json:"instance"`
@@ -29,19 +31,25 @@ type Labels struct {
 	Job          string `json:"job"`
 	Hostgroup    string `json:"hostgroup,omitempty"`
 	Hostname     string `json:"hostname,omitempty"`
+	Cloud        string `json:"cloud"`
 }
+
+// Annotations are promtheus annotions.
 type Annotations struct {
 	Description string `json:"description"`
 	Summary     string `json:"summary"`
-	Mobile      string `json:"mobile"`  //2019年2月25日 19:09:23 增加手机号支持
-	Ddurl       string `json:"ddurl"`   //2019年3月12日 20:33:38 增加多个钉钉告警支持
-	Wxurl       string `json:"wxurl"`   //2019年3月12日 20:33:38 增加多个钉钉告警支持
-	Fsurl       string `json:"fsurl"`   //2020年4月25日 17:33:38 增加多个飞书告警支持
-	Email       string `json:"email"`   //2020年7月4日 10:15:20 增加多个email告警支持
-	Groupid     string `json:"groupid"` //2021年2月2日 17:28:23 增加多个如流告警支持
-	AtSomeOne   string `json:"at"`      //2021年6月23日 14:02:21 增加@某人支持
-	Rr          string `json:"rr"`      //2021年9月14日 14:48:08 增加随机轮询参数支持
+	Mobile      string `json:"mobile"`               //2019年2月25日 19:09:23 增加手机号支持
+	Ddurl       string `json:"ddurl"`                //2019年3月12日 20:33:38 增加多个钉钉告警支持
+	Wxurl       string `json:"wxurl"`                //2019年3月12日 20:33:38 增加多个钉钉告警支持
+	Fsurl       string `json:"fsurl"`                //2020年4月25日 17:33:38 增加多个飞书告警支持
+	Email       string `json:"email"`                //2020年7月4日 10:15:20 增加多个email告警支持
+	Groupid     string `json:"groupid"`              //2021年2月2日 17:28:23 增加多个如流告警支持
+	AtSomeOne   string `json:"at"`                   //2021年6月23日 14:02:21 增加@某人支持
+	Rr          string `json:"rr"`                   //2021年9月14日 14:48:08 增加随机轮询参数支持
+	Alertgroup  string `json:"alertgroup,omitempty"` //2023年7月 增加告警组
 }
+
+// Alerts is the alert message.
 type Alerts struct {
 	Status       string      `json:"status"`
 	Labels       Labels      `json:"labels"`
@@ -50,10 +58,12 @@ type Alerts struct {
 	EndsAt       string      `json:"endsAt"`
 	GeneratorUrl string      `json:"generatorURL"` //prometheus 告警返回地址
 }
+
+// Prometheus is the message that alertmanager sends to the receiver.
 type Prometheus struct {
 	Status      string
-	Alerts      []Alerts
-	Externalurl string `json:"externalURL"` //alertmanage 返回地址
+	Alerts      []Alerts // alerts from alertmanger is "alerts: [{},...]"
+	Externalurl string   `json:"externalURL"` //alertmanage 返回地址
 }
 
 // 按照 Alert.Level 从大到小排序
@@ -69,14 +79,29 @@ func (a AlerMessages) Less(i, j int) bool { // 重写 Less() 方法， 从大到
 	return a[j].Labels.Level < a[i].Labels.Level
 }
 
-//for prometheus alert
-//关于告警级别level共有5个级别,0-4,0 信息,1 警告,2 一般严重,3 严重,4 灾难
+// for prometheus alert
+// 关于告警级别level共有5个级别,0-4,0 信息,1 警告,2 一般严重,3 严重,4 灾难
 func (c *PrometheusController) PrometheusAlert() {
 	alert := Prometheus{}
 	logsign := "[" + LogsSign() + "]"
 	logs.Info(logsign, string(c.Ctx.Input.RequestBody))
 	json.Unmarshal(c.Ctx.Input.RequestBody, &alert)
-	c.Data["json"] = SendMessageR(alert, "", "", "", "", "", "", logsign)
+
+	var wxurl, ddurl, fsurl, phone, email, groupid string
+	// check whether to open alertgroup
+	open := beego.AppConfig.String("open-alertgroup")
+	if open == "1" {
+		alertgroup := alert.Alerts[0].Annotations.Alertgroup
+		agMap := Alertgroup(alertgroup)
+		wxurl = agMap["wxurl"]
+		ddurl = agMap["ddurl"]
+		fsurl = agMap["fsurl"]
+		phone = agMap["phone"]
+		email = agMap["email"]
+		groupid = agMap["groupid"]
+	}
+
+	c.Data["json"] = SendMessageR(alert, wxurl, ddurl, fsurl, phone, email, groupid, logsign)
 	logs.Info(logsign, c.Data["json"])
 	c.ServeJSON()
 }
@@ -97,6 +122,7 @@ func (c *PrometheusController) PrometheusRouter() {
 	c.ServeJSON()
 }
 
+// SendMessageR sends alert message to different media.
 func SendMessageR(message Prometheus, rwxurl, rddurl, rfsurl, rphone, remail, rgroupid, logsign string) string {
 	//增加日志标志  方便查询日志
 
@@ -260,14 +286,16 @@ func SendMessageR(message Prometheus, rwxurl, rddurl, rfsurl, rphone, remail, rg
 		//发送消息到Email
 		if remail == "" && RMessage.Annotations.Email == "" {
 			Emails := beego.AppConfig.String("Default_emails")
-			SendEmail(EmailMessage, Emails, logsign)
+			EmailTitle := beego.AppConfig.String("Email_title")
+			SendEmail(EmailMessage, Emails, EmailTitle, logsign)
 		} else {
+			EmailTitle := beego.AppConfig.String("Email_title")
 			if remail != "" {
-				SendEmail(EmailMessage, remail, logsign)
+				SendEmail(EmailMessage, remail, EmailTitle, logsign)
 			}
 			if RMessage.Annotations.Email != "" {
 				Emails := RMessage.Annotations.Email
-				SendEmail(EmailMessage, Emails, logsign)
+				SendEmail(EmailMessage, Emails, EmailTitle, logsign)
 			}
 		}
 		//发送消息到短信
@@ -352,8 +380,7 @@ func SendMessageR(message Prometheus, rwxurl, rddurl, rfsurl, rphone, remail, rg
 			dt := time.Now()
 			dty, dtm := dt.Year(), int(dt.Month())
 			// example esIndex: prometheusalert-202112
-			esIndex := "prometheusalert-" + strconv.Itoa(dty) + strconv.Itoa(dtm)
-			// Index a prometheusalert (using JSON serialization)
+			esIndex := fmt.Sprintf("prometheusalert-%d%02d", dty, dtm)
 			alert := &elastic.AlertES{
 				Alertname:   RMessage.Labels.Alertname,
 				Status:      RMessage.Status,
@@ -365,9 +392,88 @@ func SendMessageR(message Prometheus, rwxurl, rddurl, rfsurl, rphone, remail, rg
 				StartsAt:    At,
 				EndsAt:      Et,
 				Created:     dt,
+				Cloud:       RMessage.Labels.Cloud,
+				Hostgroup:   RMessage.Labels.Hostgroup,
+				Hostnmae:    RMessage.Labels.Hostname,
 			}
-			elastic.Insert(esIndex, alert)
+			go elastic.Insert(esIndex, *alert)
 		}
 	}
 	return "告警消息发送完成."
+}
+
+// Alertgroup processess alertgroup infos and generates different media url.
+func Alertgroup(alertgroup string) map[string]string {
+	var agMap map[string]string
+
+	if len(alertgroup) == 0 {
+		return agMap
+	}
+
+	ags := strings.Split(alertgroup, ",")
+	// url likes: url1,url2...
+	var wxurl, ddurl, fsurl, email, phone, groupid, webhookurl string
+
+	// Assembling multiple alertgroups of url together
+	for _, v := range ags {
+		wxurl = wxurl + "," + beego.AppConfig.String(v+"::wxurl")
+		ddurl = ddurl + "," + beego.AppConfig.String(v+"::ddurl")
+		fsurl = fsurl + "," + beego.AppConfig.String(v+"::fsurl")
+		phone = phone + "," + beego.AppConfig.String(v+"::phone")
+		email = email + "," + beego.AppConfig.String(v+"::email")
+		groupid = groupid + "," + beego.AppConfig.String(v+"::groupid")
+		webhookurl = webhookurl + "," + beego.AppConfig.String(v+"::webhookurl")
+	}
+
+	agMap = map[string]string{
+		"wxurl":      URLDeduplication(wxurl),
+		"ddurl":      URLDeduplication(ddurl),
+		"fsurl":      URLDeduplication(fsurl),
+		"phone":      URLDeduplication(phone),
+		"email":      URLDeduplication(email),
+		"groupid":    URLDeduplication(groupid),
+		"webhookurl": URLDeduplication(webhookurl),
+	}
+
+	return agMap
+}
+
+// url de-deplication
+func URLDeduplication(url string) string {
+	if len(url) == 0 {
+		return url
+	}
+
+	urlSlice := strings.Split(url, ",")
+
+	uniqueMap := make(map[string]bool)
+	for _, s := range urlSlice {
+		// Remove space at the begin or end.
+		s = strings.TrimSpace(s)
+		uniqueMap[s] = true
+	}
+
+	uniqueSlice := []string{}
+	for key := range uniqueMap {
+		// Remove extra commas for null values
+		if len(key) == 0 {
+			continue
+		}
+		uniqueSlice = append(uniqueSlice, key)
+	}
+
+	sort.Strings(uniqueSlice)
+	newURL := strings.Join(uniqueSlice, ",")
+
+	return newURL
+}
+
+// checkURL checks urls and return non-nil url
+func checkURL(urls ...string) string {
+	for _, url := range urls {
+		if len(strings.TrimSpace(url)) != 0 {
+			return url
+		}
+	}
+	return ""
 }
